@@ -1,3 +1,62 @@
+# --- 這裡要放在檔案最上面 import 的地方 ---
+import urllib3
+# 關閉 "不安全連線" 的警告訊息 (不然 logs 會很吵)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# ... (中間省略) ...
+
+# --- 修改這個函式 ---
+@st.cache_data(ttl=300)
+def fetch_official_lottery_data():
+    try:
+        api_url = "https://api.taiwanlottery.com/TLCAPIWechat/Lottery/SuperLotto649/Result"
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36",
+            "Origin": "https://www.taiwanlottery.com",
+            "Referer": "https://www.taiwanlottery.com/"
+        }
+        
+        # 關鍵修改：加上 verify=False (忽略憑證檢查)
+        response = requests.get(api_url, headers=headers, timeout=10, verify=False)
+        
+        if response.status_code != 200:
+            raise Exception(f"API 回傳錯誤碼: {response.status_code}")
+            
+        data_json = response.json()
+        
+        if 'content' not in data_json or 'superLotto649Res' not in data_json['content']:
+             raise Exception("API 資料結構改變，無法讀取")
+
+        raw_list = data_json['content']['superLotto649Res']
+        
+        numbers_data = []
+        history_display = []
+        
+        for item in raw_list:
+            nums = item.get('drawNumberSize', [])
+            term = item.get('drawTerm', '未知')
+            date = item.get('drawDate', '未知')
+            
+            if len(nums) >= 6:
+                main_nums = [int(n) for n in nums[:6]]
+                special_num = int(nums[6]) if len(nums) > 6 else 0
+                
+                numbers_data.extend(main_nums)
+                
+                history_display.append({
+                    "期數": term,
+                    "日期": date.split('T')[0],
+                    "號碼": str(main_nums),
+                    "特別號": special_num
+                })
+
+        st.toast("✅ 成功連線台彩官方 API！", icon="🇹🇼")
+        return numbers_data, history_display
+
+    except Exception as e:
+        st.error(f"連線官方 API 失敗 ({e})，切換回模擬模式。")
+        return [random.randint(1, 49) for _ in range(60)], []
 import streamlit as st
 import pandas as pd
 import requests
@@ -111,3 +170,4 @@ if st.button("💰 根據官方數據產生幸運號碼", type="primary"):
     st.success("您的財富密碼：")
     st.markdown(f"## {lucky}")
     st.caption("資料來源：台灣彩券官方 API")
+
